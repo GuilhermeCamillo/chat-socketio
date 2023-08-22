@@ -1,94 +1,155 @@
-import React, {useEffect, useState} from 'react';
-import {FlatList, StyleSheet, TouchableOpacity, View} from 'react-native';
-import {IconButton, Text, TextInput} from 'react-native-paper';
-import Svg, {Path} from 'react-native-svg';
+import React, {useCallback, useEffect, useState} from 'react';
+import {FlatList, StyleSheet, View} from 'react-native';
+import {Appbar, IconButton, Text, TextInput} from 'react-native-paper';
 import {io} from 'socket.io-client';
 import uuid from 'react-native-uuid';
+import {useSelector} from 'react-redux';
+import {RootState, useAppDispatch} from '../../store';
+import {useAppNavigation} from '../../routes';
+import getUserData from '../../services/userData';
+import {getChatConversation} from '../../store/reducers/chatReducer';
+import {UsersTypes} from '../../store/types/usersTypes';
+import { FlashList } from '@shopify/flash-list';
 
 interface Message {
   id: string;
-  name: string;
-  text: string;
+  sender: UsersTypes;
+  receiver: UsersTypes;
+  body: string;
+  sendDateTime: Date | string;
+}
+
+interface ReceivedMessage {
+  sender: UsersTypes;
+  receiver: UsersTypes;
+  body: string;
 }
 
 interface Payload {
-  name: string;
+  senderId: string | undefined;
   text: string;
-  receiver?: string;
+  receiverId: string | undefined;
 }
 
 const socket = io('http://localhost:3000');
 
 const ChatScreen = () => {
-  const [name, setName] = useState<string>('');
+  const dispatch = useAppDispatch();
+  const navigation = useAppNavigation();
+  const user = getUserData();
   const [text, setText] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const selectedUser = useSelector(
+    (state: RootState) => state.users.selectedUser,
+  );
+
+  function getChatRoomId(
+    userId1: string | undefined,
+    userId2: string | undefined,
+  ): string {
+    const sortedUserIds = [userId1, userId2].sort();
+    const chatRoomId = `${sortedUserIds[0]}_${sortedUserIds[1]}`;
+    return chatRoomId;
+  }
+
+  const joinChatRoom = useCallback(() => {
+    const chatRoomId = getChatRoomId(user?.id, selectedUser?.id);
+    socket.emit('joinChat', chatRoomId); 
+  }, [selectedUser, user]);
+
+  const leaveChatRoom = useCallback(() => {
+    const chatRoomId = getChatRoomId(user?.id, selectedUser?.id);
+    socket.emit('leaveChat', chatRoomId); 
+  }, [selectedUser, user]);
 
   useEffect(() => {
-    function receivedMessage(message: Payload) {
-      const newMessage: Message = {
-        id: uuid.v4().toString(),
-        name: message.name,
-        text: message.text,
-      };
-
-      setMessages(prevMessages => [newMessage, ...prevMessages]);
+    if (selectedUser && user) {
+      joinChatRoom(); 
     }
 
-    socket.on('msgToClient', receivedMessage);
+    return () => {
+      if (selectedUser && user) {
+        leaveChatRoom();
+      }
+    };
+  }, [joinChatRoom, leaveChatRoom, selectedUser, user]);
 
+  useEffect(() => {
+    async function getMessages() {
+      const data = await dispatch(getChatConversation(selectedUser?.id));
+      setMessages(data);
+    }
+    getMessages();
+  }, [dispatch, selectedUser]);
+
+  const receivedMessage = useCallback((message: ReceivedMessage) => {
+    const newMessage: Message = {
+      id: uuid.v4().toString(),
+      receiver: message.receiver,
+      body: message.body,
+      sender: message.sender,
+      sendDateTime: new Date(),
+    };
+
+    setMessages(prevMessages => [newMessage, ...prevMessages]);
+  }, []);
+
+  useEffect(() => {
+    socket.on('msgToClient', receivedMessage);
     return () => {
       socket.off('msgToClient', receivedMessage);
     };
-  }, [name, text]);
+  }, [receivedMessage]);
 
-  function validateInput() {
-    return name.length > 0 && text.length > 0;
-  }
+  const validateInput = () => text.length > 0;
 
-  function sendMessage() {
+  const sendMessage = () => {
     if (validateInput()) {
       const message: Payload = {
-        name,
+        senderId: user?.id,
         text,
-        receiver: name == 'Gui' ? 'Dudu' : 'Gui',
+        receiverId: selectedUser?.id,
       };
+
+      const newMessage: any = {
+        id: uuid.v4().toString(),
+        sender: user, 
+        receiver: selectedUser, 
+        body: text,
+        sendDateTime: new Date(),
+      };
+
+      setMessages(prevMessages => [newMessage, ...prevMessages]);
 
       socket.emit('msgToServer', message);
       setText('');
     }
-  }
+  };
 
-  const ChatBubble = React.memo((item: Message) => {
-    return (
-      <View
-        style={item.name == name ? styles.sentBubble : styles.receivedBubble}>
-        <Text variant="titleMedium" style={styles.bubbleName}>
-          {item.name}
-        </Text>
-        <Text variant="bodyLarge" style={styles.bubbleText}>
-          {item.text}
-        </Text>
-      </View>
-    );
-  });
-
-  console.log('CHEGOU AQUI', name);
+  const ChatBubble = React.memo(({sender, body}: Message) => (
+    <View
+      style={
+        sender.id === user?.id ? styles.sentBubble : styles.receivedBubble
+      }>
+      <Text variant="titleMedium" style={styles.bubbleName}>
+        {sender.firstName}
+      </Text>
+      <Text variant="bodyLarge" style={styles.bubbleText}>
+        {body}
+      </Text>
+    </View>
+  ));
 
   return (
     <>
-      <View style={styles.header}>
-        <TextInput
-          placeholder="Digite seu nome"
-          value={name}
-          mode="outlined"
-          onChangeText={setName}
-          placeholderTextColor="#B5B5B5"
-          style={styles.input}
-        />
-      </View>
+      <Appbar.Header style={{backgroundColor: '#fff'}}>
+        <Appbar.BackAction onPress={() => navigation.goBack()} />
+        <Text>{selectedUser.firstName}</Text>
+      </Appbar.Header>
       <View style={styles.chat}>
-        <FlatList
+        <FlashList
+          showsVerticalScrollIndicator={false}
+          estimatedItemSize={68}
           bounces={false}
           inverted
           data={messages}

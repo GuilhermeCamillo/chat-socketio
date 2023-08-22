@@ -1,11 +1,13 @@
 import {combineReducers} from 'redux';
+import {useDispatch} from 'react-redux';
+import {configureStore} from '@reduxjs/toolkit';
 
 import authSlice from './reducers/authReducer';
-import {configureStore} from '@reduxjs/toolkit';
-import {useDispatch} from 'react-redux';
+import usersSlice from './reducers/usersReducer';
 
 const rootReducer = combineReducers({
   auth: authSlice,
+  users: usersSlice,
 });
 
 export type RootState = ReturnType<typeof store.getState>;
