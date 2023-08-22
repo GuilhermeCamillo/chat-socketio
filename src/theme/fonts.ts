@@ -1,4 +1,3 @@
-import {Platform} from 'react-native';
 import {MD3LightTheme, configureFonts} from 'react-native-paper';
 
 const fontConfig = {

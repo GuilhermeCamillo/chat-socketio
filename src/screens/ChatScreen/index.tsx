@@ -14,6 +14,7 @@ interface Message {
 interface Payload {
   name: string;
   text: string;
+  receiver?: string;
 }
 
 const socket = io('http://localhost:3000');
@@ -50,6 +51,7 @@ const ChatScreen = () => {
       const message: Payload = {
         name,
         text,
+        receiver: name == 'Gui' ? 'Dudu' : 'Gui',
       };
 
       socket.emit('msgToServer', message);
@@ -70,6 +72,8 @@ const ChatScreen = () => {
       </View>
     );
   });
+
+  console.log('CHEGOU AQUI', name);
 
   return (
     <>
